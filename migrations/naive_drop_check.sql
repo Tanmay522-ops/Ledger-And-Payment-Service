@@ -1,0 +1,1 @@
+ALTER TABLE accounts DROP CONSTRAINT user_not_negative;
