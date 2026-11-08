@@ -11,25 +11,15 @@ import (
 // reliably. Tests set it. It is 0 in normal use.
 var NaiveDelay time.Duration
 
-type querier interface {
-	QueryRowContext(ctx context.Context, q string, args ...any) *sql.Row
-}
 
-// findKey is the ONLY place idempotency keys are looked up.
-func findKey(ctx context.Context, q querier, key string) (bool, error) {
-	var n int
-	err := q.QueryRowContext(ctx,
-		`SELECT count(*) FROM idempotency_keys WHERE key = $1`, key).Scan(&n)
-	return n > 0, err
-}
 
 // NaiveTransfer is DELIBERATELY UNSAFE. Do not fix it.
 func NaiveTransfer(ctx context.Context, d *sql.DB, req TransferRequest) (*TransferResult, error) {
-	seen, err := findKey(ctx, d, req.Key)
+		rec, err := findKey(ctx, d, req.Key)
 	if err != nil {
 		return nil, err
 	}
-	if seen {
+	if rec != nil {
 		return &TransferResult{Replayed: true}, nil
 	}
 

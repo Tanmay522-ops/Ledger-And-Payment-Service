@@ -65,3 +65,47 @@ func fund(t *testing.T, d *sql.DB, external, user, amount int64) {
 		t.Fatal(err)
 	}
 }
+
+
+// setupSafe: clean DB with the FULL schema, balance CHECK still on.
+func setupSafe(t *testing.T) *sql.DB {
+	t.Helper()
+	d, err := db.Open()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { d.Close() })
+	if err := db.Reset(context.Background(), d, "../../migrations/001_init.sql"); err != nil {
+		t.Fatal(err)
+	}
+	return d
+}
+
+func fundSafe(t *testing.T, d *sql.DB, external, user, amount int64) {
+	t.Helper()
+	if _, err := Transfer(context.Background(), d,
+		newTransferRequest(external, user, amount)); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// assertBooks is a mini reconciliation (the full one comes in 4e).
+func assertBooks(t *testing.T, d *sql.DB) {
+	t.Helper()
+	var sum int64
+	if err := d.QueryRow(`SELECT COALESCE(SUM(amount),0) FROM ledger_entries`).Scan(&sum); err != nil {
+		t.Fatal(err)
+	}
+	if sum != 0 {
+		t.Errorf("ledger entries sum to %d, want 0", sum)
+	}
+	var bad int
+	if err := d.QueryRow(`SELECT count(*) FROM accounts a
+		WHERE a.balance <> COALESCE((SELECT SUM(amount) FROM ledger_entries e WHERE e.account_id = a.id),0)`).
+		Scan(&bad); err != nil {
+		t.Fatal(err)
+	}
+	if bad != 0 {
+		t.Errorf("%d accounts have a balance that does not match their entries", bad)
+	}
+}
