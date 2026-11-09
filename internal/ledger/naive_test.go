@@ -1,3 +1,5 @@
+//go:build naive
+
 package ledger
 
 import (

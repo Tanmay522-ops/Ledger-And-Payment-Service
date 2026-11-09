@@ -89,23 +89,14 @@ func fundSafe(t *testing.T, d *sql.DB, external, user, amount int64) {
 	}
 }
 
-// assertBooks is a mini reconciliation (the full one comes in 4e).
+// assertBooks runs the full reconciliation (all invariants, one snapshot).
 func assertBooks(t *testing.T, d *sql.DB) {
 	t.Helper()
-	var sum int64
-	if err := d.QueryRow(`SELECT COALESCE(SUM(amount),0) FROM ledger_entries`).Scan(&sum); err != nil {
+	v, err := Reconcile(context.Background(), d)
+	if err != nil {
 		t.Fatal(err)
 	}
-	if sum != 0 {
-		t.Errorf("ledger entries sum to %d, want 0", sum)
-	}
-	var bad int
-	if err := d.QueryRow(`SELECT count(*) FROM accounts a
-		WHERE a.balance <> COALESCE((SELECT SUM(amount) FROM ledger_entries e WHERE e.account_id = a.id),0)`).
-		Scan(&bad); err != nil {
-		t.Fatal(err)
-	}
-	if bad != 0 {
-		t.Errorf("%d accounts have a balance that does not match their entries", bad)
+	for _, x := range v {
+		t.Errorf("reconciliation violation: %s", x)
 	}
 }

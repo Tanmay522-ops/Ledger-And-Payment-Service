@@ -12,6 +12,10 @@ import (
 	"ledger/internal/db"
 )
 
+// afterDebitHook is a TEST-ONLY failure-injection point. It is nil in real runs.
+// Tests set it to simulate a failure between the debit and the credit.
+var afterDebitHook func() error
+
 type savedResponse struct {
 	TransferID int64  `json:"transfer_id,omitempty"`
 	Error      string `json:"error,omitempty"`
@@ -134,9 +138,14 @@ func transfer(ctx context.Context, d *sql.DB, req TransferRequest) (*TransferRes
 		req.From, req.To, req.Amount).Scan(&tid); err != nil {
 		return nil, err
 	}
-	if _, err := tx.ExecContext(ctx,
+		if _, err := tx.ExecContext(ctx,
 		`UPDATE accounts SET balance = balance - $1 WHERE id = $2`, req.Amount, req.From); err != nil {
 		return nil, err
+	}
+	if afterDebitHook != nil { // test-only failure point: debit done, credit not yet
+		if err := afterDebitHook(); err != nil {
+			return nil, err // deferred Rollback undoes the debit, transfer row, everything
+		}
 	}
 	if _, err := tx.ExecContext(ctx,
 		`UPDATE accounts SET balance = balance + $1 WHERE id = $2`, req.Amount, req.To); err != nil {
